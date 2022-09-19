@@ -1,0 +1,107 @@
+REPORT zalvoo2_201.
+
+DATA: mostrar_alv   TYPE REF TO cl_salv_table,
+      obj_functions TYPE REF TO cl_salv_functions,
+      obj_selects   TYPE REF TO cl_salv_selections,
+      obj_column    TYPE REF TO cl_salv_column,
+      obj_columns   TYPE REF TO cl_salv_columns,
+      obj_display   TYPE REF TO cl_salv_display_settings,
+      obj_colum     TYPE REF TO cl_salv_column_table.
+      
+
+
+TYPES: BEGIN OF s_produtos.
+    INCLUDE TYPE zprodutos_201.
+TYPES: fc_desc_tipo TYPE val_text,
+       END OF s_produtos.
+
+DATA: it_produtos TYPE TABLE OF s_produtos,
+      wa_produtos LIKE LINE OF it_produtos.
+
+SELECT * FROM zprodutos_201 INTO TABLE it_produtos.
+
+PERFORM descprod.
+
+CALL METHOD cl_salv_table=>factory(
+  IMPORTING
+    r_salv_table = mostrar_alv
+  CHANGING
+    t_table      = it_produtos
+                   ).
+
+obj_functions = mostrar_alv->get_functions( ).
+obj_functions->set_all( abap_true ).
+obj_functions->
+
+" Referenciar as configuraçõe ds tabelas
+obj_display = mostrar_alv->get_display_settings( ).
+" Tabela do tipo ZEBRA striped
+obj_display->set_striped_pattern( abap_true ).
+" Define o titulo do programa no cabeçalho
+obj_display->set_list_header( 'ALV DA TABELA PRODUTOS' ).
+"REMOVER LINHAS HORIZONTAIS
+obj_display->set_horizontal_lines( abap_false ).
+" Remover linhas verticais.
+obj_display->set_vertical_lines( abap_false ).
+
+obj_selects = mostrar_alv->get_selections( ).
+obj_selects->set_selection_mode( if_salv_c_selection_mode=>row_column  ).
+obj_columns = mostrar_alv->get_columns( ).
+obj_columns->set_optimize( abap_false ).
+
+obj_column = obj_columns->get_column('MANDT' ).
+obj_column->set_visible( abap_false ).
+
+obj_column = obj_columns->get_column('PRODUTO').
+obj_column->set_long_text('COD.').
+obj_column->set_output_length( 5 ).
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+
+obj_column = obj_columns->get_column('DESC_PRODUTO').
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+obj_column->set_output_length( 20 ).
+
+obj_column = obj_columns->get_column('MOEDA').
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+
+obj_column = obj_columns->get_column('TIPOPRODUTO').
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+obj_columns->set_column_position( columnname = 'TIPOPRODUTO' position = 3 ).
+obj_column->set_output_length( 15 ).
+
+obj_column = obj_columns->get_column('PRECO').
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+obj_column->set_output_length( 6 ).
+
+
+
+obj_column = obj_columns->get_column('FC_DESC_TIPO').
+obj_column->set_long_text('DESCRIÇÃO DO PRODUTO').
+obj_column->set_alignment( if_salv_c_alignment=>centered ).
+obj_columns->set_column_position( columnname = 'fc_desc_tipo' position = 4 ).
+obj_column->set_output_length( 25 ).
+
+
+mostrar_alv->display( ).
+
+
+FORM descprod.
+  DATA: index TYPE sy-tabix.
+
+  SELECT * FROM zprodutos_201 INTO TABLE it_produtos.
+  LOOP AT it_produtos INTO wa_produtos.
+    index = sy-tabix.
+
+    CALL FUNCTION 'STF4_GET_DOMAIN_VALUE_TEXT'
+      EXPORTING
+        iv_domname      = 'ZTIPOPRODUTO_201'
+        iv_value        = wa_produtos-tipoproduto
+      IMPORTING
+        ev_value_text   = wa_produtos-fc_desc_tipo
+      EXCEPTIONS
+        value_not_found = 1
+        OTHERS          = 2.
+
+    MODIFY it_produtos FROM wa_produtos INDEX index.
+  ENDLOOP.
+ENDFORM.
