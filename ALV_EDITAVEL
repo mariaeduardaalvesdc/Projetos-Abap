@@ -63,6 +63,10 @@ CLASS alv_event_handler IMPLEMENTATION.
         t_linhas = mostrar_alv->get_selections( )->get_selected_rows( ).
 
         READ TABLE t_linhas INTO linha INDEX 1.
+        IF linha = 0.
+        MESSAGE 'Nenhum item selecionado' TYPE 'W'.
+        EXIT.
+        ENDIF.
         READ TABLE it_produtos INDEX linha INTO wa_produtos.
         CALL FUNCTION 'POPUP_TO_CONFIRM'
           EXPORTING
