@@ -1,0 +1,217 @@
+REPORT zalvoo2_201.
+
+DATA: mostrar_alv   TYPE REF TO cl_salv_table,
+      obj_functions TYPE REF TO cl_salv_functions,
+      obj_selects   TYPE REF TO cl_salv_selections,
+      obj_column    TYPE REF TO cl_salv_column,
+      obj_columns   TYPE REF TO cl_salv_columns,
+      obj_display   TYPE REF TO cl_salv_display_settings,
+      obj_colum     TYPE REF TO cl_salv_column_table,
+      obj_events    TYPE REF TO cl_salv_events_table.
+
+TYPES: BEGIN OF s_produtos.
+    INCLUDE TYPE zprodutos_201.
+TYPES: fc_desc_tipo TYPE val_text,
+       END OF s_produtos.
+
+
+DATA: it_produtos TYPE TABLE OF s_produtos,
+      wa_produtos LIKE LINE OF it_produtos.
+
+DATA: ld_answer TYPE string.
+
+DATA(ld_titlebar) = 'DELETAR PRODUTO'.
+
+SELECT SINGLE object FROM dokhl INTO @DATA(ld_diagnose_object).
+
+DATA(ld_text_question) = 'VOCÊ TEM CERTEZA QUE QUER DELETAR O PRODUTO SELECIONADO?'.
+DATA(ld_text_button_1) = 'SIM'.
+
+SELECT SINGLE name FROM icon INTO @DATA(ld_icon_button_1).
+
+DATA(ld_text_button_2) = 'NÃO'.
+SELECT SINGLE name FROM icon INTO @DATA(ld_icon_button_2).
+*
+DATA(ld_default_button) = '2'.
+DATA(ld_display_cancel_button) = ' '.
+
+SELECT SINGLE object FROM dokhl INTO @DATA(ld_userdefined_f1_help).
+
+DATA(ld_start_column) = '123 '.
+DATA(ld_start_row) = '123 '.
+
+SELECT SINGLE name FROM icon INTO @DATA(ld_popup_type).
+
+DATA(ld_iv_quickinfo_button_1) = 'Check type of data required'.
+
+DATA(ld_iv_quickinfo_button_2) = 'Check type of data required'.
+
+
+CLASS alv_event_handler DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS: added_function FOR EVENT added_function OF cl_salv_events_table
+      IMPORTING e_salv_function.
+ENDCLASS.
+
+CLASS alv_event_handler IMPLEMENTATION.
+  METHOD: added_function.
+    CASE e_salv_function.
+      WHEN 'DELETE'.
+
+        DATA: t_linhas TYPE salv_t_row,
+              linha    TYPE i.
+
+        t_linhas = mostrar_alv->get_selections( )->get_selected_rows( ).
+
+        READ TABLE t_linhas INTO linha INDEX sy-index.
+        IF linha = 0.
+           MESSAGE 'NENHUMA LINHA SELECIONADA' TYPE 'I'.
+           EXIT.
+        ENDIF.
+        READ TABLE it_produtos INDEX linha INTO wa_produtos.
+
+
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+           titlebar       = ld_titlebar
+*           diagnose_object =            ld_diagnose_object
+            text_question  = ld_text_question
+           text_button_1  = ld_text_button_1
+*           icon_button_1  = ld_icon_button_1
+           text_button_2  = ld_text_button_2
+*           icon_button_2  = ld_icon_button_2
+      default_button =             ld_default_button
+      display_cancel_button =      ld_display_cancel_button
+*           userdefined_f1_help =        ld_userdefined_f1_help
+
+*           popup_type     = ld_popup_type
+
+          IMPORTING
+            answer         = ld_answer
+* TABLES
+*           parameter      = it_parameter
+
+          .  "  POPUP_TO_CONFIRM
+          CASE ld_answer.
+            WHEN '1'.
+             DELETE FROM zprodutos_201 WHERE produto = wa_produtos-produto.
+              DELETE it_produtos INDEX linha.
+              MESSAGE 'DELETADO COM SUCESSO' TYPE 'S'.
+
+            WHEN '2' .
+              MESSAGE 'NÃO FOI DELETADO' TYPE 'S'.
+            WHEN OTHERS.
+          ENDCASE.
+        IF sy-subrc EQ 0.
+          "All OK
+        ELSEIF sy-subrc EQ 1. "Exception
+          "Add code for exception here
+        ENDIF.
+
+        "DELETE FROM zprodutos_201 WHERE produto = wa_produtos-produto.
+        "DELETE it_produtos INDEX linha.
+*        IF sy-subrc = 0.
+*          MESSAGE 'DELETADO COM SUCESSO' TYPE 'S'.
+*        ELSE.
+*          MESSAGE 'ERRO AO DELETAR' TYPE 'I'.
+*        ENDIF.
+        mostrar_alv->refresh( ).
+    ENDCASE.
+  ENDMETHOD.
+ENDCLASS.
+
+START-OF-SELECTION.
+
+  SELECT * FROM zprodutos_201 INTO TABLE it_produtos.
+
+  PERFORM descprod.
+
+  CALL METHOD cl_salv_table=>factory(
+    IMPORTING
+      r_salv_table = mostrar_alv
+    CHANGING
+      t_table      = it_produtos
+                     ).
+
+  mostrar_alv->set_screen_status(
+   EXPORTING
+     report = sy-repid
+     pfstatus = 'STANDARD'
+
+     set_functions = cl_salv_table=>c_functions_all ).
+  obj_selects = mostrar_alv->get_selections( ).
+  obj_selects->set_selection_mode( if_salv_c_selection_mode=>row_column ).
+
+  obj_events = mostrar_alv->get_event( ).
+  SET HANDLER alv_event_handler=>added_function FOR obj_events.
+
+*obj_functions = mostrar_alv->get_functions( ).
+*obj_functions->set_all( abap_true ).
+*obj_functions->
+
+  " Referenciar as configuraçõe ds tabelas
+  obj_display = mostrar_alv->get_display_settings( ).
+  " Tabela do tipo ZEBRA striped
+  obj_display->set_striped_pattern( abap_true ).
+  " Define o titulo do programa no cabeçalho
+  obj_display->set_list_header( 'ALV DA TABELA PRODUTOS' ).
+  "REMOVER LINHAS HORIZONTAIS
+  obj_display->set_horizontal_lines( abap_false ).
+  " Remover linhas verticais.
+  obj_display->set_vertical_lines( abap_false ).
+
+  obj_columns = mostrar_alv->get_columns( ).
+  obj_columns->set_optimize( abap_false ).
+
+  obj_column = obj_columns->get_column('MANDT' ).
+  obj_column->set_visible( abap_false ).
+
+  obj_column = obj_columns->get_column('PRODUTO').
+  obj_column->set_long_text('COD.').
+  obj_column->set_output_length( 5 ).
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+
+  obj_column = obj_columns->get_column('DESC_PRODUTO').
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+  obj_column->set_output_length( 20 ).
+
+  obj_column = obj_columns->get_column('MOEDA').
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+
+  obj_column = obj_columns->get_column('TIPOPRODUTO').
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+  obj_columns->set_column_position( columnname = 'TIPOPRODUTO' position = 3 ).
+  obj_column->set_output_length( 15 ).
+
+  obj_column = obj_columns->get_column('PRECO').
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+  obj_column->set_output_length( 6 ).
+
+  obj_column = obj_columns->get_column('FC_DESC_TIPO').
+  obj_column->set_long_text('DESCRIÇÃO DO PRODUTO').
+  obj_column->set_alignment( if_salv_c_alignment=>centered ).
+  obj_columns->set_column_position( columnname = 'fc_desc_tipo' position = 4 ).
+  obj_column->set_output_length( 25 ).
+
+  mostrar_alv->display( ).
+
+FORM descprod.
+  DATA: index TYPE sy-tabix.
+
+  SELECT * FROM zprodutos_201 INTO TABLE it_produtos.
+  LOOP AT it_produtos INTO wa_produtos.
+    index = sy-tabix.
+
+    CALL FUNCTION 'STF4_GET_DOMAIN_VALUE_TEXT'
+      EXPORTING
+        iv_domname      = 'ZTIPOPRODUTO_201'
+        iv_value        = wa_produtos-tipoproduto
+      IMPORTING
+        ev_value_text   = wa_produtos-fc_desc_tipo
+      EXCEPTIONS
+        value_not_found = 1
+        OTHERS          = 2.
+
+    MODIFY it_produtos FROM wa_produtos INDEX index.
+  ENDLOOP.
+ENDFORM.
