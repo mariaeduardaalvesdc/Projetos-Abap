@@ -1,0 +1,141 @@
+DATA: ok_code LIKE sy-ucomm,
+      save_ok like sy-ucomm,
+      g_container TYPE scrfname VALUE 'BCALV_GRID_DEMO_0100_CONT1',
+      grid1  TYPE REF TO cl_gui_alv_grid,
+      g_custom_container TYPE REF TO cl_gui_custom_container,
+      gs_layout TYPE lvc_s_layo,
+      g_max type i value 100.
+
+DATA: BEGIN OF gt_produtos occurs 0.  "with header line
+        include structure zprodutos_201.
+DATA: celltab type LVC_T_STYL.
+DATA: END OF gt_produtos.
+
+*---------------------------------------------------------------------*
+*       MAIN                                                          *
+*---------------------------------------------------------------------*
+CALL SCREEN 100.
+
+*---------------------------------------------------------------------*
+*       MODULE PBO OUTPUT                                             *
+*---------------------------------------------------------------------*
+MODULE pbo OUTPUT.
+  SET PF-STATUS 'MAIN100'.
+  SET TITLEBAR '01'.
+  IF g_custom_container IS INITIAL.
+    CREATE OBJECT g_custom_container
+           EXPORTING container_name = g_container.
+    CREATE OBJECT grid1
+           EXPORTING i_parent = g_custom_container.
+    PERFORM select_data_and_init_style.
+
+
+   gs_layout-stylefname = 'CELLTAB'.
+
+   CALL METHOD grid1->set_table_for_first_display
+         EXPORTING i_structure_name = 'ZPRODUTOS_201'
+                   is_layout        = gs_layout
+         CHANGING  it_outtab        = gt_produtos[].
+
+
+
+  ENDIF.
+ENDMODULE.
+*---------------------------------------------------------------------*
+*       MODULE PAI INPUT                                              *
+*---------------------------------------------------------------------*
+MODULE pai INPUT.
+  save_ok = ok_code.
+  clear ok_code.
+  CASE save_ok.
+    WHEN 'EXIT'.
+      PERFORM exit_program.
+    WHEN 'SWITCH'.
+      PERFORM switch_edit_mode.
+      WHEN 'EDIT'.
+        MESSAGE 'Botão de editar funcionando' TYPE 'I'.
+
+        WHEN 'DELETE'.
+
+          MESSAGE 'Botão de deletar funcionando' TYPE 'I'.
+         WHEN 'ADD'.
+           MESSAGE 'Botão de adicionar funcionando' TYPE 'I'.
+    WHEN OTHERS.
+
+  ENDCASE.
+ENDMODULE.
+
+
+FORM exit_program.
+  LEAVE PROGRAM.
+ENDFORM.
+
+
+FORM select_data_and_init_style.
+  DATA: lt_produtos TYPE TABLE OF zprodutos_201 WITH HEADER LINE,
+        lt_celltab TYPE lvc_t_styl,
+        l_index TYPE i.
+
+  SELECT * FROM zprodutos_201 INTO TABLE lt_produtos UP TO g_max ROWS.
+
+  LOOP AT lt_produtos.
+    MOVE-CORRESPONDING lt_produtos TO gt_produtos.
+    APPEND gt_produtos.
+  ENDLOOP.
+
+
+  LOOP AT gt_produtos.
+    l_index = sy-tabix.
+    refresh lt_celltab.
+
+        perform fill_celltab using 'RW'
+                             changing lt_celltab.
+
+
+    INSERT LINES OF lt_celltab INTO TABLE gt_produtos-celltab.
+    MODIFY gt_produtos INDEX l_index.
+  ENDLOOP.
+ENDFORM.
+
+FORM fill_celltab using value(p_mode)
+                  CHANGING pt_celltab TYPE lvc_t_styl.
+  DATA: ls_celltab TYPE lvc_s_styl,
+        l_mode type raw4.
+
+    l_mode = cl_gui_alv_grid=>mc_style_enabled.
+
+
+
+
+  ls_celltab-fieldname = 'PRODUTO'.
+  "ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+  INSERT ls_celltab INTO TABLE pt_celltab.
+  ls_celltab-fieldname = 'DESC_PRODUTO'.
+  ls_celltab-style = l_mode.
+  INSERT ls_celltab INTO TABLE pt_celltab.
+  ls_celltab-fieldname = 'TIPOPRODUTO'.
+  "ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+  INSERT ls_celltab INTO TABLE pt_celltab.
+  ls_celltab-fieldname = 'PRECO'.
+  ls_celltab-style = l_mode.
+  INSERT ls_celltab INTO TABLE pt_celltab.
+  ls_celltab-fieldname = 'MOEDA'.
+  ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+  INSERT ls_celltab INTO TABLE pt_celltab.
+
+
+ENDFORM.
+
+FORM switch_edit_mode.
+
+  IF grid1->is_ready_for_input( ) eq 0.
+
+    CALL METHOD grid1->set_ready_for_input
+                     EXPORTING i_ready_for_input = 1.
+
+  ELSE.
+* lock edit enabled cells against input
+    CALL METHOD grid1->set_ready_for_input
+                    EXPORTING i_ready_for_input = 0.
+  ENDIF.
+ENDFORM.
