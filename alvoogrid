@@ -1,0 +1,216 @@
+*&---------------------------------------------------------------------*
+*& Report ZESTAGIO_203_32
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZESTAGIO_203_32.
+
+TYPES: BEGIN OF ge_prod.
+  INCLUDE STRUCTURE zprodutos_203.
+TYPES: desc_tipo TYPE val_text.
+TYPES: END OF ge_prod.
+
+DATA: gt_prod TYPE STANDARD TABLE OF ge_prod,
+      gs_prod LIKE LINE OF gt_prod.
+
+DATA: ok_code LIKE sy-ucomm,
+      custom_container TYPE REF TO cl_gui_custom_container,
+      gr_grid TYPE REF TO cl_gui_alv_grid,
+      container TYPE scrfname VALUE 'ALV',
+      gs_layout TYPE lvc_s_layo.
+DATA: gt_fieldcat TYPE lvc_t_fcat,
+      gs_fieldcat TYPE lvc_s_fcat.
+
+DATA: lt_fieldcat TYPE slis_t_fieldcat_alv.
+
+CLASS lcl_alv DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS: set_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+               IMPORTING e_object.
+    CLASS-METHODS: get_ucomm FOR EVENT user_command OF cl_gui_alv_grid
+               IMPORTING e_ucomm.
+ENDCLASS.
+CLASS lcl_alv IMPLEMENTATION.
+  METHOD set_toolbar.
+    DATA: wa_toolbar TYPE stb_button.
+    wa_toolbar-butn_type = 3.
+    APPEND wa_toolbar TO e_object->mt_toolbar.
+
+    CLEAR wa_toolbar.
+    wa_toolbar-function  = 'DELETAR'.
+    wa_toolbar-icon      = icon_delete.
+    wa_toolbar-quickinfo = 'Deletar produto'.
+    wa_toolbar-butn_type = 0.
+    APPEND wa_toolbar TO e_object->mt_toolbar.
+
+    CLEAR wa_toolbar.
+    wa_toolbar-function  = 'EDITAR'.
+    wa_toolbar-icon      = icon_change.
+    wa_toolbar-quickinfo = 'Editar produto'.
+    wa_toolbar-butn_type = 0.
+    APPEND wa_toolbar TO e_object->mt_toolbar.
+  ENDMETHOD.
+
+  METHOD get_ucomm.
+    DATA: lt_rows TYPE lvc_t_row,
+          lv_row  TYPE lvc_s_row.
+
+    DATA: resp TYPE c.
+
+    DATA(lt_prod_aux) = gt_prod.
+    CLEAR lt_prod_aux.
+
+    IF e_ucomm = 'DELETAR'.
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'Deletar produto'
+          text_question         = 'Deseja deletar o produto?'
+          text_button_1         = 'Sim'
+          text_button_2         = 'Não'
+          default_button        = '2'
+          display_cancel_button = ''
+        IMPORTING
+          answer                = resp
+        EXCEPTIONS
+          text_not_found        = 1
+          OTHERS                = 2.
+      CASE resp.
+        WHEN '1'.
+          CALL METHOD gr_grid->get_selected_rows IMPORTING et_index_rows = lt_rows.
+          CALL METHOD gr_grid->get_current_cell IMPORTING es_row_id = lv_row.
+
+          LOOP AT lt_rows INTO lv_row.
+            READ TABLE gt_prod INDEX lv_row-index INTO gs_prod.
+            APPEND gs_prod TO lt_prod_aux.
+            DELETE FROM zprodutos_203 WHERE produto = gs_prod-produto.
+          ENDLOOP.
+          IF sy-subrc = 0.
+            COMMIT WORK.
+            LOOP AT lt_prod_aux REFERENCE INTO DATA(lo_prod).
+              DELETE gt_prod WHERE produto = lo_prod->produto.
+            ENDLOOP.
+            MESSAGE 'Produto deletado com sucesso' TYPE 'S'.
+            gr_grid->refresh_table_display( ).
+          ENDIF.
+        WHEN '2'.
+          EXIT.
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+
+START-OF-SELECTION.
+SELECT * FROM zprodutos_203 INTO TABLE gt_prod.
+
+CALL SCREEN 100.
+
+MODULE pbo OUTPUT.
+  SET PF-STATUS 'STATUS_203'.
+  IF custom_container IS INITIAL.
+    CREATE OBJECT custom_container
+      EXPORTING container_name = container.
+    CREATE OBJECT gr_grid
+      EXPORTING I_PARENT = custom_container.
+  ENDIF.
+  SET HANDLER lcl_alv=>set_toolbar FOR gr_grid.
+  SET HANDLER lcl_alv=>get_ucomm FOR gr_grid.
+  PERFORM layout.
+  PERFORM buscar_dados.
+  PERFORM fieldcat.
+  CALL METHOD gr_grid->set_table_for_first_display(
+       EXPORTING is_layout = gs_layout
+       CHANGING it_outtab = gt_prod[]
+                it_fieldcatalog = gt_fieldcat[]
+                 ).
+ENDMODULE.
+
+MODULE pai INPUT.
+  CASE ok_code.
+    WHEN 'BACK'.
+      LEAVE PROGRAM.
+    WHEN 'EXIT'.
+      LEAVE PROGRAM.
+  ENDCASE.
+ENDMODULE.
+
+FORM fieldcat.
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      I_PROGRAM_NAME               = sy-repid
+*      I_INTERNAL_TABNAME           = 'GT_PROD'
+      I_STRUCTURE_NAME             = 'ZPRODUTOS_203'
+*     I_CLIENT_NEVER_DISPLAY       = 'X'
+      I_INCLNAME                   = sy-repid
+*     I_BYPASSING_BUFFER           =
+*     I_BUFFER_ACTIVE              =
+     CHANGING
+       ct_fieldcat                  = lt_fieldcat
+*   EXCEPTIONS
+*     INCONSISTENT_INTERFACE       = 1
+*     PROGRAM_ERROR                = 2
+*     OTHERS                       = 3
+           .
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+DATA: ls_fieldcat TYPE slis_fieldcat_alv.
+  ls_fieldcat-fieldname = 'DESC_TIPO'.
+  ls_fieldcat-seltext_m = 'DESC. TIPO'.
+  ls_fieldcat-col_pos = 6.
+  APPEND ls_fieldcat TO lt_fieldcat.
+  CALL FUNCTION 'LVC_TRANSFER_FROM_SLIS'
+    EXPORTING
+      it_fieldcat_alv       = lt_fieldcat
+*     IT_SORT_ALV           =
+*     IT_FILTER_ALV         =
+*     IS_LAYOUT_ALV         =
+    IMPORTING
+      ET_FIELDCAT_LVC       = gt_fieldcat[]
+*     ET_SORT_LVC           =
+*     ET_FILTER_LVC         =
+*     ES_LAYOUT_LVC         =
+    tables
+      it_data               = gt_prod[]
+*   EXCEPTIONS
+*     IT_DATA_MISSING       = 1
+*     OTHERS                = 2
+            .
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  LOOP AT gt_fieldcat INTO gs_fieldcat.
+    CASE gs_fieldcat-fieldname.
+      WHEN 'PRODUTO'.
+        gs_fieldcat-edit = ''.
+      WHEN 'DESC_TIPO'.
+        gs_fieldcat-edit = ''.
+      WHEN OTHERS.
+        gs_fieldcat-edit = 'X'.
+    ENDCASE.
+    MODIFY gt_fieldcat FROM gs_fieldcat.
+  ENDLOOP.
+ENDFORM.
+
+FORM layout.
+ gs_layout-zebra = 'X' .
+ gs_layout-smalltitle = 'X'.
+ENDFORM. " PREPAR_LAYOUT
+
+FORM buscar_dados.
+  DATA lv_index TYPE sy-tabix.
+  LOOP AT gt_prod INTO gs_prod.
+    lv_index = sy-tabix.
+    CALL FUNCTION 'STF4_GET_DOMAIN_VALUE_TEXT'
+      EXPORTING
+        iv_domname      = 'ZTIPO_PRODUTO_203'
+        iv_value        = gs_prod-tipo_produto
+      IMPORTING
+        ev_value_text   = gs_prod-desc_tipo
+      EXCEPTIONS
+        value_not_found = 1
+        OTHERS          = 2.
+    MODIFY gt_prod FROM gs_prod INDEX lv_index.
+  ENDLOOP.
+ENDFORM.
